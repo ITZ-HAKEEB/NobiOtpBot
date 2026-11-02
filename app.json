@@ -1,0 +1,20 @@
+{
+  "name": "Nobi Number Store Bot",
+  "description": "Telegram number and OTP selling bot with admin panel",
+  "repository": "https://github.com/your-username/your-repo",
+  "keywords": ["telegram", "bot", "otp", "seller"],
+  "env": {
+    "API_ID": { "description": "Telegram API ID", "required": true },
+    "API_HASH": { "description": "Telegram API Hash", "required": true },
+    "BOT_TOKEN": { "description": "Telegram Bot Token", "required": true },
+    "MONGO_URI": { "description": "MongoDB Connection String", "required": true },
+    "OWNER_ID": { "description": "Owner Telegram User ID", "required": true },
+    "OWNER_USERNAME": { "description": "Owner Username without @", "required": true },
+    "SUPPORT_USERNAME": { "description": "Support Username without @", "required": true },
+    "UPI_ID": { "description": "Your UPI ID for payments", "value": "your_upi_id@paytm", "required": true },
+    "QR_IMAGE_URL": { "description": "Direct image URL for QR code", "value": "https://envs.sh/QR.jpg", "required": true }
+  },
+  "buildpacks": [
+    { "url": "heroku/python" }
+  ]
+}
