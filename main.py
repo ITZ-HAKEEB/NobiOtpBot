@@ -254,8 +254,9 @@ async def admin_panel_cmd(client, message: Message):
         "🛠 **Admin Control Panel** 🛠\n\n"
         "Welcome to the admin panel. Here are your available commands:\n\n"
         "1️⃣ `/addnumber` - Add a new number, session and set its price.\n"
-        "2️⃣ `/addbalance <user_id> <amount>` - Add balance to user wallet.\n"
-        "3️⃣ `/rmbalance <user_id> <amount>` - Remove balance from user wallet.\n\n"
+        "2️⃣ `/rmnumber` - Remove an existing number from the store.\n"
+        "3️⃣ `/addbalance <user_id> <amount>` - Add balance to user wallet.\n"
+        "4️⃣ `/rmbalance <user_id> <amount>` - Remove balance from user wallet.\n\n"
         "Use these commands carefully to manage your store!"
     )
     await message.reply_text(admin_text)
@@ -290,30 +291,52 @@ async def add_number_cmd(client, message: Message):
     add_number_state[message.from_user.id] = {"step": "waiting_number"}
     await message.reply_text("📱 Please send phone number with country code (e.g. `+919876543210`):")
 
+# Remove Number Flow state
+rm_number_state = {}
+
+@app.on_message(filters.command("rmnumber") & filters.user(config.OWNER_ID))
+async def rmnumber_cmd(client, message: Message):
+    rm_number_state[message.from_user.id] = True
+    await message.reply_text("🗑 Please send the phone number you want to remove (e.g. `919876543210` or `+919876543210`):")
+
 @app.on_message(filters.private & filters.user(config.OWNER_ID))
 async def owner_text_handler(client, message: Message):
     user_id = message.from_user.id
+    text_content = message.text.strip()
+    
+    # Handle /rmnumber flow
+    if user_id in rm_number_state:
+        phone_to_remove = text_content.lstrip("+")
+        result = await db.numbers_col.delete_one({"phone": {"$regex": phone_to_remove}})
+        del rm_number_state[user_id]
+        if result.deleted_count > 0:
+            await message.reply_text(f"✅ Number `+{phone_to_remove}` has been successfully removed from the store.")
+        else:
+            await message.reply_text(f"❌ Number `+{phone_to_remove}` not found in the database.")
+        return
+
+    # Handle /addnumber flow
     if user_id in add_number_state:
         state = add_number_state[user_id]
         if state["step"] == "waiting_number":
-            phone = message.text.strip()
+            phone = text_content.lstrip("+")
             state["phone"] = phone
             state["step"] = "waiting_session"
             await message.reply_text("🔑 Now send the **Telethon String Session** for this number:")
         elif state["step"] == "waiting_session":
-            state["session"] = message.text.strip()
+            state["session"] = text_content
             state["step"] = "waiting_price"
             await message.reply_text("💵 Now enter the **Price** for this number (e.g. `35` or `50`):")
         elif state["step"] == "waiting_price":
             try:
-                price = float(message.text.strip())
+                price = float(text_content)
             except ValueError:
                 await message.reply_text("❌ Invalid price! Please enter a valid number (e.g. 35):")
                 return
             
             phone = state["phone"]
             session_str = state["session"]
-            country = get_country_from_phone(phone)
+            country = get_country_from_phone("+" + phone)
             
             await db.numbers_col.insert_one({
                 "phone": phone,
