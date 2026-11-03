@@ -1,2 +1,2 @@
-# ChatFighterBot
-ADVANCE CHAT FIGHTER BOT MADE BY NOBI 
+## 🚀 Deploy on Heroku 
+[![Deploy🚀](https://www.herokucdn.com/deploy/button.svg)](https://dashboard.heroku.com/new?template=https://github.com/ITZ-HAKEEB/NobiOtpBot)
