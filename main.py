@@ -247,6 +247,19 @@ async def sales_info_cb(client, callback: CallbackQuery):
     ])
     await callback.message.edit_text(text, reply_markup=keyboard)
 
+# Admin Panel Command
+@app.on_message(filters.command("admin") & filters.user(config.OWNER_ID))
+async def admin_panel_cmd(client, message: Message):
+    admin_text = (
+        "🛠 **Admin Control Panel** 🛠\n\n"
+        "Welcome to the admin panel. Here are your available commands:\n\n"
+        "1️⃣ `/addnumber` - Add a new number, session and set its price.\n"
+        "2️⃣ `/addbalance <user_id> <amount>` - Add balance to user wallet.\n"
+        "3️⃣ `/rmbalance <user_id> <amount>` - Remove balance from user wallet.\n\n"
+        "Use these commands carefully to manage your store!"
+    )
+    await message.reply_text(admin_text)
+
 @app.on_message(filters.command("addbalance") & filters.user(config.OWNER_ID))
 async def add_balance_cmd(client, message: Message):
     args = message.command
@@ -269,6 +282,7 @@ async def remove_balance_cmd(client, message: Message):
     await db.update_balance(target, -amount)
     await message.reply_text(f"✅ Successfully removed ₹{amount} from User ID `{target}`.")
 
+# Add Number Flow with Price Setting
 add_number_state = {}
 
 @app.on_message(filters.command("addnumber") & filters.user(config.OWNER_ID))
@@ -287,18 +301,29 @@ async def owner_text_handler(client, message: Message):
             state["step"] = "waiting_session"
             await message.reply_text("🔑 Now send the **Telethon String Session** for this number:")
         elif state["step"] == "waiting_session":
-            session_str = message.text.strip()
+            state["session"] = message.text.strip()
+            state["step"] = "waiting_price"
+            await message.reply_text("💵 Now enter the **Price** for this number (e.g. `35` or `50`):")
+        elif state["step"] == "waiting_price":
+            try:
+                price = float(message.text.strip())
+            except ValueError:
+                await message.reply_text("❌ Invalid price! Please enter a valid number (e.g. 35):")
+                return
+            
             phone = state["phone"]
+            session_str = state["session"]
             country = get_country_from_phone(phone)
             
             await db.numbers_col.insert_one({
                 "phone": phone,
                 "session": session_str,
                 "country": country,
+                "price": price,
                 "status": "available"
             })
             del add_number_state[user_id]
-            await message.reply_text(f"✅ Service added successfully!\nCountry: {country}\nNumber: `{phone}`")
+            await message.reply_text(f"✅ Service added successfully!\nCountry: {country}\nPrice: ₹{price}")
 
 @app.on_callback_query(filters.regex("buy_telegram_accounts"))
 async def buy_accounts_cb(client, callback: CallbackQuery):
@@ -312,37 +337,46 @@ async def buy_accounts_cb(client, callback: CallbackQuery):
     
     keyboard = []
     for num in available_numbers:
-        keyboard.append([InlineKeyboardButton(f"🛒 {num['country']} - {num['phone']}", callback_data=f"buy_num_{num['phone']}")])
+        # Hide full phone number, show only Flag, Country Name and Price (e.g. 🇮🇳 India (+91) - ₹35)
+        price = num.get("price", 50.0)
+        btn_text = f"🛒 {num['country']} - ₹{price}"
+        keyboard.append([InlineKeyboardButton(btn_text, callback_data=f"buy_num_{num['phone']}")])
     keyboard.append([InlineKeyboardButton("🔙 Back", callback_data="main_menu")])
     
-    await callback.message.edit_text("🌍 **Select Country & Number:**", reply_markup=InlineKeyboardMarkup(keyboard))
+    await callback.message.edit_text("🌍 **Select Country & Price:**", reply_markup=InlineKeyboardMarkup(keyboard))
 
 @app.on_callback_query(filters.regex("^buy_num_"))
 async def process_buy_number(client, callback: CallbackQuery):
     phone = callback.data.replace("buy_num_", "")
     user_id = callback.from_user.id
     
+    num_doc = await db.numbers_col.find_one({"phone": phone, "status": "available"})
+    if not num_doc:
+        await callback.answer("Sorry, this number is already sold or unavailable.", show_alert=True)
+        return
+    
+    price = num_doc.get("price", 50.0)
     user = await db.get_user(user_id)
-    price = 50.0
     
     if user["balance"] < price:
-        await callback.answer("❌ Insufficient balance in your wallet! Please deposit first.", show_alert=True)
+        await callback.answer(f"❌ Insufficient balance! Required: ₹{price}", show_alert=True)
         return
     
     await db.update_balance(user_id, -price)
-    num_doc = await db.numbers_col.find_one_and_update(
+    updated_num = await db.numbers_col.find_one_and_update(
         {"phone": phone, "status": "available"},
         {"$set": {"status": "sold", "buyer_id": user_id}}
     )
     
-    if not num_doc:
+    if not updated_num:
         await callback.answer("Sorry, this number is already sold.", show_alert=True)
         return
     
     text = (
         f"🎉 **Number Purchased Successfully!**\n\n"
         f"📱 Number: `+{phone}`\n"
-        f"🌍 Country: {num_doc['country']}\n\n"
+        f"🌍 Country: {num_doc['country']}\n"
+        f"💰 Price Paid: ₹{price}\n\n"
         f"⚠️ **Please Fast Login This Account!**\n"
         f"When you enter the number in Telegram and receive the OTP, click the button below."
     )
@@ -399,4 +433,3 @@ async def back_to_menu(client, callback: CallbackQuery):
 if __name__ == "__main__":
     print("🤖 Nobi Number Store Bot Started Successfully!")
     app.run()
-  
